@@ -1,17 +1,16 @@
 package com.github.ivan_osipov.clabo.dsl
 
-import com.github.ivan_osipov.clabo.api.internal.QueueBasedSender
 import com.github.ivan_osipov.clabo.api.internal.Sender
 import com.github.ivan_osipov.clabo.api.model.*
 import com.github.ivan_osipov.clabo.api.output.dto.*
-import com.github.ivan_osipov.clabo.dsl.config.BotConfigContext
+import com.github.ivan_osipov.clabo.dsl.config.BotConfig
 import com.github.ivan_osipov.clabo.dsl.perks.command.Command
 import com.github.ivan_osipov.clabo.dsl.perks.command.CommandsContext
 import com.github.ivan_osipov.clabo.dsl.perks.inline.InlineModeContext
+import com.github.ivan_osipov.clabo.dsl.perks.inlineKeyboard.CallbackDataContext
 import com.github.ivan_osipov.clabo.state.chat.ChatContext
 import com.github.ivan_osipov.clabo.state.chat.ChatInteractionContext
 import com.github.ivan_osipov.clabo.state.chat.ChatStateStore
-import com.github.ivan_osipov.clabo.utils.CallbackData
 import com.github.ivan_osipov.clabo.utils.ChatId
 import com.github.ivan_osipov.clabo.utils.MessageId
 import com.github.ivan_osipov.clabo.utils.Text
@@ -19,9 +18,15 @@ import com.google.common.base.Joiner
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-open class CommonBotContext(val bot: Bot) {
+open class CommonBotContext(val botName: String) {
 
-    var commandsContext = CommandsContext(bot.botName)
+    lateinit var sender: Sender
+
+    val configContext = BotConfig()
+
+    var commandsContext = CommandsContext(botName)
+
+    var callbackDataContext = CallbackDataContext()
 
     var namedCallbacks = HashMap<String, (Update) -> Unit>()
 
@@ -29,27 +34,15 @@ open class CommonBotContext(val bot: Bot) {
 
     var chatInteractionContext: ChatInteractionContext<*, *>? = null
 
-    var callbackQueryProcessors = HashMap<ChatId, MutableMap<CallbackData, (CallbackQuery, Update) -> Unit>>()
-
-    private val sender: Sender = QueueBasedSender(bot.api)
-
     protected val logger: Logger = LoggerFactory.getLogger(CommonBotContext::class.java)
-
-    init {
-        check(bot.apiKey.isNotEmpty(), { "Api key is not defined" })
-        check(bot.botName.isNotEmpty(), { "Bot name is not loaded (check api key)" })
-    }
 
     fun <T : ChatStateStore<C>, C : ChatContext> chatting(chatStateStore: T,
                                                           init: ChatInteractionContext<T, C>.() -> Unit) {
         chatInteractionContext = ChatInteractionContext(chatStateStore).apply { init() }
     }
 
-    fun configure(init: BotConfigContext.() -> Unit) {
-        val config = BotConfigContext()
-        config.init()
-
-        bot.api.defaultUpdatesParams = config.updatesParams
+    fun configure(init: BotConfig.() -> Unit) {
+        configContext.init()
     }
 
     fun helloMessage(text: Text, init: SendParams.() -> Unit = {}) {
@@ -68,7 +61,11 @@ open class CommonBotContext(val bot: Bot) {
     fun commands(init: CommandsContext.() -> Unit) {
         commandsContext.init()
         logger.info("For comfortable usage your commands you can send to @BotFather follow commands: " +
-                Joiner.on(", ").join(commandsContext.commandList.filter { !it.endsWith("@${bot.botName}") }))
+                Joiner.on(", ").join(commandsContext.commandList.filter { !it.endsWith("@$botName") }))
+    }
+
+    fun callbackData(init: CallbackDataContext.() -> Unit) {
+        callbackDataContext.init()
     }
 
     fun onStart(init: (Command) -> Unit) {
@@ -94,6 +91,10 @@ open class CommonBotContext(val bot: Bot) {
     fun inlineMode(init: InlineModeContext.() -> Unit) {
         logger.info("You have to set inline mode trough @BotFather for providing inline mode")
         inlineModeContext.init()
+    }
+
+    fun send(sendParams: SendParams, successCallback: (Message) -> Unit = {}) {
+        sender.send(sendParams, successCallback)
     }
 
     fun send(text: Text, chatId: ChatId, init: SendParams.() -> Unit = {}) {
@@ -156,13 +157,14 @@ open class CommonBotContext(val bot: Bot) {
             = abstractButton(text) {
         this.callbackData = callbackData
         if(callbackQueryProcessor != null) {
-            val chatId = this@button.holder.chatId
-            logger.debug("Saved callbackData: $callbackData for $chatId")
-            if(chatId != null) {
-                callbackQueryProcessors.computeIfAbsent(chatId, { HashMap() })
-                callbackQueryProcessors[chatId]!!.put(callbackData, callbackQueryProcessor)
-            }
+            callbackDataContext.register(callbackData, callbackQueryProcessor)
         }
+    }
+
+    fun InlineKeyboardMarkup.urlButton(text: Text,
+                                    url: String)
+            = abstractButton(text) {
+        this.url = url
     }
 
     fun InlineKeyboardMarkup.switchInlineQueryButton(text: Text, switchInlineQuery: String) = abstractButton(text) {

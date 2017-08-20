@@ -1,5 +1,6 @@
 package com.github.ivan_osipov.clabo.dsl.internal.contextProcessing
 
+import com.github.ivan_osipov.clabo.api.internal.TelegramApiInteraction
 import com.github.ivan_osipov.clabo.api.model.Message
 import com.github.ivan_osipov.clabo.dsl.CommonBotContext
 import com.github.ivan_osipov.clabo.dsl.perks.command.Command
@@ -7,22 +8,16 @@ import com.github.ivan_osipov.clabo.api.model.Update
 import com.github.ivan_osipov.clabo.state.chat.ChatContext
 import com.github.ivan_osipov.clabo.state.chat.ChatStateStore
 import com.github.ivan_osipov.clabo.utils.isCommand
-import com.google.common.collect.ArrayListMultimap
-import com.google.common.collect.Multimap
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.util.*
 import java.util.concurrent.Semaphore
 
-internal class ContextProcessor(val commonBotContext: CommonBotContext) {
+internal class ContextProcessor(val commonBotContext: CommonBotContext, private val api: TelegramApiInteraction) {
 
     var lastUpdateId: Long = 0
     val logger: Logger = LoggerFactory.getLogger(ContextProcessor::class.java)
 
     fun run() {
-        val bot = commonBotContext.bot
-        val api = bot.api
-
         val lock: Semaphore = Semaphore(0)
 
         while (true) {
@@ -56,11 +51,8 @@ internal class ContextProcessor(val commonBotContext: CommonBotContext) {
         val commandsContext = commonBotContext.commandsContext
         val inlineModeContext = commonBotContext.inlineModeContext
         val chatInteractionContext = commonBotContext.chatInteractionContext
-        var chatStateStore: ChatStateStore<*>? = null
-        chatInteractionContext?.let {
-            chatStateStore = it.chatStateStore
-        }
-        val callbackQueryProcessors = commonBotContext.callbackQueryProcessors
+        val chatStateStore: ChatStateStore<*>? = chatInteractionContext?.chatStateStore
+        val callbackDataRegister = commonBotContext.callbackDataContext.register
 
         val executionBatch = ExecutionBatch()
         for (update in updates) {
@@ -114,17 +106,16 @@ internal class ContextProcessor(val commonBotContext: CommonBotContext) {
                 }
             }
             val callbackQuery = update.callbackQuery
-            if(callbackQuery != null) {
+            if (callbackQuery != null) {
                 val callbackQueryData = callbackQuery.data
-                if(callbackQueryData != null) {
+                if (callbackQueryData != null) {
                     val chatId = callbackQuery.message?.chat?.id
-                    logger.debug("Processing callbackData: $callbackQueryData for $chatId")
-                    callbackQueryProcessors[chatId]?.let { callbackProcessors ->
-                        val callbackProcessor = callbackProcessors[callbackQueryData]
-                        logger.debug("Callback processor is ${if(callbackProcessor != null) "found" else "not found"}")
-                        if(callbackProcessor != null) {
+                    logger.trace("Processing callbackData: $callbackQueryData for $chatId")
+                    callbackDataRegister[callbackQueryData]?.let { callbackDaraProcessors ->
+                        logger.trace("For $callbackQueryData found ${callbackDaraProcessors.size} processors")
+                        for (callbackDaraProcessor in callbackDaraProcessors) {
                             executionBatch.callbacks.add {
-                                callbackProcessor.invoke(callbackQuery, update)
+                                callbackDaraProcessor(callbackQuery, update)
                             }
                         }
                     }
