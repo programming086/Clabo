@@ -14,8 +14,18 @@ object Queries {
 
     val EDIT_MESSAGE_REPLY_MARKUP = "editMessageReplyMarkup"
 
+    val EDIT_MESSAGE_CAPTION = "editMessageCaption"
+
     val GET_ME: String = "getMe"
 
     val SEND_MESSAGE: String = "sendMessage"
+
+    val GET_CHAT: String = "getChat"
+
+    val SEND_PHOTO: String = "sendPhoto"
+
+    val SEND_AUDIO: String = "sendAudio"
+
+    val SEND_DOCUMENT: String = "sendDocument"
 
 }

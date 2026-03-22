@@ -1,6 +1,8 @@
 package com.github.ivan_osipov.clabo.api.model
 
 import com.github.ivan_osipov.clabo.api.exceptions.IncorrectApiUsage
+import com.github.ivan_osipov.clabo.utils.ChatId
+import com.github.ivan_osipov.clabo.utils.MessageId
 import com.google.gson.annotations.SerializedName
 
 /**
@@ -8,7 +10,7 @@ import com.google.gson.annotations.SerializedName
  */
 open class Message : Identifiable() {
     @SerializedName("message_id")
-    override lateinit var id: String
+    override lateinit var id: MessageId
 
     @SerializedName("from")
     var from: User? = null
@@ -29,7 +31,10 @@ open class Message : Identifiable() {
     var forwardFromChat: Chat? = null
 
     @SerializedName("forward_from_message_id")
-    var forwardFromMessageId: String? = null
+    var forwardFromMessageId: MessageId? = null
+
+    @SerializedName("forward_signature")
+    var forwardSignature: String? = null
 
     @SerializedName("forward_date")
     var forwardDate: Long? = null
@@ -40,11 +45,14 @@ open class Message : Identifiable() {
     @SerializedName("edit_date")
     var editDate: Long? = null
 
+    @SerializedName("author_signature")
+    var authorSignature: String? = null
+
     @SerializedName("text")
     var text: String? = null
 
     @SerializedName("entities")
-    var entities: List<MessageEntity>? = null
+    var entities: List<MessageEntity> = ArrayList()
 
     @SerializedName("audio")
     var audio: Audio? = null
@@ -53,10 +61,10 @@ open class Message : Identifiable() {
     var document: Document? = null
 
     @SerializedName("game")
-    var game: Any? = null //todo Game
+    var game: Game? = null
 
     @SerializedName("photo")
-    var photo: List<PhotoSize>? = null
+    var photo: List<PhotoSize> = ArrayList()
 
     @SerializedName("sticker")
     var sticker: Sticker? = null
@@ -71,12 +79,12 @@ open class Message : Identifiable() {
     var videoNote: VideoNote? = null
 
     @SerializedName("new_chat_members")
-    var newChatMembers: List<User>? = null
+    var newChatMembers: List<User> = ArrayList()
 
     @SerializedName("caption")
     var caption: String? = null
         get() {
-            if(document == null && photo == null && video == null) {
+            if(document == null && photo.isEmpty() && video == null) {
                 throw IncorrectApiUsage("Caption is supported only for document/photo/video")
             }
             return field
@@ -101,7 +109,7 @@ open class Message : Identifiable() {
     var newChatTitle: String? = null
 
     @SerializedName("new_chat_photo")
-    var newChatPhoto: List<PhotoSize>? = null
+    var newChatPhoto: List<PhotoSize> = ArrayList()
 
     @SerializedName("delete_chat_photo")
     var deleteChatPhoto: Boolean = false
@@ -116,15 +124,18 @@ open class Message : Identifiable() {
     var channelChatCreated: Boolean = false
 
     @SerializedName("migrate_to_chat_id")
-    var migrateToChatId: String? = null
+    var migrateToChatId: ChatId? = null
+
+    @SerializedName("migrate_from_chat_id")
+    var migrateFromChatId: ChatId? = null
 
     @SerializedName("pinned_message")
     var pinnedMessage: Message? = null
 
     @SerializedName("invoice")
-    var invoice: Any? = null //todo Invoice
+    var invoice: Invoice? = null
 
     @SerializedName("successful_payment")
-    var successfulPayment: Any? = null //todo SuccessfulPayment
+    var successfulPayment: SuccessfulPayment? = null
 
 }

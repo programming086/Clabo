@@ -6,6 +6,13 @@ typealias CallbackData = String
 
 typealias MessageId = String
 
+typealias FileId = String
+
+/**
+ * It is url or file id
+ */
+typealias FilePointer = String
+
 typealias CallbackQueryId = String
 
 typealias MsgCode = String

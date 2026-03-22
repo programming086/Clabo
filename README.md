@@ -11,8 +11,7 @@ Clabo is DSL (Domain-Specific Language) for [Kotlin](https://kotlinlang.org) whi
 If you use Gradle, you should add the follow config
 ```gradle
 repositories {
-    mavenCentral()
-    jcenter() //for used fuel lib
+    jcenter()
 }
 dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version", //probably, you have the kotlin stdlib dependency
@@ -26,10 +25,9 @@ dependencies {
 The easiest sample of bot that you can implement below. You should change 'apiKey' with your value
 ```kotlin
 fun main(args: Array<String>) {
-    bot("apiKey") longPooling {
+    bot("apiKey") longPolling {
         onStart { command ->
-            val message = command.update.message!!
-            message answer "Hi, ${message.from}"
+            command.message answer "Hi, ${command.message.from}"
         }
     }
 }
@@ -51,8 +49,8 @@ good changes in internal code or fixes for docs, please, feel free to do pull re
 More information about contribution you can find in [contribution guidelines for this project](https://github.com/ivan-osipov/Clabo/blob/master/CONTRIBUTING.md)
 
 ## Kotlin and Java
-Kotlin give us ability for making projects which will be started on JRE 6. Sometimes there are limitations 
-for launching applications in JRE 8 in production. This project is compiled for JRE 6.
+Kotlin gives us ability for making projects which will be started on JRE 6. Sometimes there are limitations 
+for launching applications in JRE 8 in production. This project is compiled for JRE 6 and compatible with higher versions as result.
 
 ## Code Of Conduct
 Openness for the dialog opens door for contribution to this project.

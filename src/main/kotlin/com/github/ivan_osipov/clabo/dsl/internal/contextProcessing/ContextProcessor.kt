@@ -5,46 +5,42 @@ import com.github.ivan_osipov.clabo.api.model.Message
 import com.github.ivan_osipov.clabo.dsl.CommonBotContext
 import com.github.ivan_osipov.clabo.dsl.perks.command.Command
 import com.github.ivan_osipov.clabo.api.model.Update
+import com.github.ivan_osipov.clabo.dsl.BotResults
 import com.github.ivan_osipov.clabo.state.chat.ChatContext
 import com.github.ivan_osipov.clabo.state.chat.ChatStateStore
 import com.github.ivan_osipov.clabo.utils.isCommand
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.util.concurrent.Semaphore
 
 internal class ContextProcessor(val commonBotContext: CommonBotContext, private val api: TelegramApiInteraction) {
 
-    var lastUpdateId: Long = 0
-    val logger: Logger = LoggerFactory.getLogger(ContextProcessor::class.java)
+    private var lastUpdateId: Long = 0
+    private val logger: Logger = LoggerFactory.getLogger(ContextProcessor::class.java)
 
-    fun run() {
-        val lock: Semaphore = Semaphore(0)
-
-        while (true) {
+    fun run() : BotResults {
+        var botResults = BotResults()
+        while (!commonBotContext.stop.get()) {
             try {
                 val updateParams = api.defaultUpdatesParams.copy()
 
                 updateParams.offset = lastUpdateId
 
-                api.getUpdates(updateParams, { updates ->
+                val updates = api.getUpdates(updateParams)
 
-                    val executionBatch = collectExecutionBatch(updates)
+                if(updates.isEmpty()) continue
 
-                    processExecutionBatch(executionBatch)
+                val executionBatch = collectExecutionBatch(updates)
 
-                    lock.release()
-                }, {
-                    lock.release()
-                })
-
-                lock.acquire()
+                processExecutionBatch(executionBatch)
             } catch (e: Exception) {
                 logger.error("Getting updates error", e)
-                lock.release()
+                commonBotContext.stop.set(true)
+                botResults = BotResults(e)
             } finally {
                 Thread.sleep(1)
             }
         }
+        return botResults
     }
 
     private fun collectExecutionBatch(updates: List<Update>): ExecutionBatch {
@@ -53,6 +49,7 @@ internal class ContextProcessor(val commonBotContext: CommonBotContext, private 
         val chatInteractionContext = commonBotContext.chatInteractionContext
         val chatStateStore: ChatStateStore<*>? = chatInteractionContext?.chatStateStore
         val callbackDataRegister = commonBotContext.callbackDataContext.register
+        val channelContext = commonBotContext.channelContext
 
         val executionBatch = ExecutionBatch()
         for (update in updates) {
@@ -75,8 +72,9 @@ internal class ContextProcessor(val commonBotContext: CommonBotContext, private 
                     val chatContext: ChatContext? = chatStateStore?.getChatContext(message.chat.id)
                     chatContext?.let {
                         val messagesProcessors: Collection<(Message, Update) -> Unit> = chatContext
-                                .likeCallbacks.get(message.text?.toLowerCase())
+                                .patternCallbacks.get(message.text?.toLowerCase())
                         val predicateCallbacks = chatContext.predicateCallbacks.asMap()
+                        val messageCallbacks = chatContext.messageCallbacks
 
                         for (messagesProcessor in messagesProcessors) {
                             executionBatch.callbacks.add {
@@ -94,9 +92,24 @@ internal class ContextProcessor(val commonBotContext: CommonBotContext, private 
                                 }
                             }
                         }
+
+                        for (messageCallback in messageCallbacks) {
+                            executionBatch.callbacks.add {
+                                messageCallback(message, update)
+                            }
+                        }
                     }
                 }
             }
+
+            if(update.channelPost != null) {
+                channelContext.channelMessageCallbacks.forEach { callback ->
+                    executionBatch.callbacks.add {
+                        callback(update.channelPost!!, update)
+                    }
+                }
+            }
+
             val inlineQuery = update.inlineQuery
             if (inlineQuery != null) {
                 inlineModeContext.inlineQueryCallbacks.forEach { callback ->
@@ -128,6 +141,7 @@ internal class ContextProcessor(val commonBotContext: CommonBotContext, private 
     private fun processExecutionBatch(executionBatch: ExecutionBatch) {
         for (callback in executionBatch.callbacks) {
             callback()
+            if(commonBotContext.stop.get()) break
         }
     }
 
@@ -139,7 +153,9 @@ internal class ContextProcessor(val commonBotContext: CommonBotContext, private 
         val text = update.message!!.text!!
         val parts: List<String> = text.split(" ")
         var name: String = parts[0].toLowerCase()
-        val parameter: String? = if (parts.size > 1) parts[1] else null
+        val parameter: String? = if (parts.size > 1) {
+            (1 until parts.size).joinToString(separator = " ") { parts[it] }
+        } else null
         name = name.substring(1)
         val commandObj = Command(name, parameter, update)
 

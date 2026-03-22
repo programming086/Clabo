@@ -1,6 +1,7 @@
 package com.github.ivan_osipov.clabo.dsl
 
-import com.github.ivan_osipov.clabo.api.internal.Sender
+import com.github.ivan_osipov.clabo.api.internal.IncomingInteractionApi
+import com.github.ivan_osipov.clabo.api.internal.OutgoingInteractionApi
 import com.github.ivan_osipov.clabo.api.model.*
 import com.github.ivan_osipov.clabo.api.output.dto.*
 import com.github.ivan_osipov.clabo.dsl.config.BotConfig
@@ -8,19 +9,21 @@ import com.github.ivan_osipov.clabo.dsl.perks.command.Command
 import com.github.ivan_osipov.clabo.dsl.perks.command.CommandsContext
 import com.github.ivan_osipov.clabo.dsl.perks.inline.InlineModeContext
 import com.github.ivan_osipov.clabo.dsl.perks.inlineKeyboard.CallbackDataContext
-import com.github.ivan_osipov.clabo.state.chat.ChatContext
-import com.github.ivan_osipov.clabo.state.chat.ChatInteractionContext
-import com.github.ivan_osipov.clabo.state.chat.ChatStateStore
+import com.github.ivan_osipov.clabo.state.chat.*
 import com.github.ivan_osipov.clabo.utils.ChatId
+import com.github.ivan_osipov.clabo.utils.FilePointer
 import com.github.ivan_osipov.clabo.utils.MessageId
 import com.github.ivan_osipov.clabo.utils.Text
 import com.google.common.base.Joiner
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicBoolean
 
 open class CommonBotContext(val botName: String) {
 
-    lateinit var sender: Sender
+    lateinit var sender: OutgoingInteractionApi
+
+    lateinit var receiver: IncomingInteractionApi
 
     val configContext = BotConfig()
 
@@ -34,7 +37,19 @@ open class CommonBotContext(val botName: String) {
 
     var chatInteractionContext: ChatInteractionContext<*, *>? = null
 
-    protected val logger: Logger = LoggerFactory.getLogger(CommonBotContext::class.java)
+    val channelContext = InChannelContext()
+
+    val stop = AtomicBoolean(false)
+
+    private val logger: Logger = LoggerFactory.getLogger(CommonBotContext::class.java)
+
+    fun chatting(init: ChatInteractionContext<StoreStub, StaticChatContext>.() -> Unit) {
+        chatting(StoreStub, init)
+    }
+
+    fun channels(init: InChannelContext.() -> Unit) {
+        channelContext.init()
+    }
 
     fun <T : ChatStateStore<C>, C : ChatContext> chatting(chatStateStore: T,
                                                           init: ChatInteractionContext<T, C>.() -> Unit) {
@@ -45,6 +60,10 @@ open class CommonBotContext(val botName: String) {
         configContext.init()
     }
 
+    fun stop() {
+        stop.set(true)
+    }
+
     fun helloMessage(text: Text, init: SendParams.() -> Unit = {}) {
         val helloMessageSendParams = SendParams()
         helloMessageSendParams.text = text
@@ -53,7 +72,7 @@ open class CommonBotContext(val botName: String) {
         onStart {
             it.update.message?.chat?.id?.let { chatId: ChatId ->
                 helloMessageSendParams.chatId = chatId
-                sender.send(helloMessageSendParams)
+                sender.sendMessageAsync(helloMessageSendParams)
             }
         }
     }
@@ -94,7 +113,7 @@ open class CommonBotContext(val botName: String) {
     }
 
     fun send(sendParams: SendParams, successCallback: (Message) -> Unit = {}) {
-        sender.send(sendParams, successCallback)
+        sender.sendMessageAsync(sendParams, successCallback)
     }
 
     fun send(text: Text, chatId: ChatId, init: SendParams.() -> Unit = {}) {
@@ -104,8 +123,128 @@ open class CommonBotContext(val botName: String) {
     fun send(text: Text, chatId: ChatId, init: SendParams.() -> Unit, successCallback: (Message) -> Unit = {}) {
         val sendParams = SendParams(chatId, text)
         sendParams.init()
-        sender.send(sendParams, successCallback)
+        sender.sendMessageAsync(sendParams, successCallback)
     }
+
+    fun sendSync(text: Text, chatId: ChatId, init: SendParams.() -> Unit = {}) {
+        val sendParams = SendParams(chatId, text)
+        sendParams.init()
+        sender.sendMessageSync(sendParams)
+    }
+
+    //region sendDocument
+
+    fun sendDocument(chatId: ChatId,
+                     filePointer: FilePointer,
+                     init: SendDocumentParams.() -> Unit = {},
+                     successCallback: (Message) -> Unit = {}) {
+        val params = SendDocumentParams(chatId, filePointer)
+        params.init()
+        sender.sendMessageAsync(params, successCallback)
+    }
+
+    fun sendDocument(chatId: ChatId,
+                     file: java.io.File,
+                     init: SendDocumentParams.() -> Unit = {},
+                     successCallback: (Message) -> Unit = {}) {
+        val params = SendDocumentParams(chatId, file = file)
+        params.init()
+        sender.uploadFileAsync(params, successCallback)
+    }
+
+    fun sendDocumentSync(chatId: ChatId,
+                         filePointer: FilePointer? = null,
+                         init: SendDocumentParams.() -> Unit = {}): Message {
+        val params = SendDocumentParams(chatId, filePointer)
+        params.init()
+        return sender.sendMessageSync(params)
+    }
+
+    fun sendDocumentSync(chatId: ChatId,
+                         file: java.io.File,
+                         init: SendDocumentParams.() -> Unit = {}): Message {
+        val params = SendDocumentParams(chatId, file = file)
+        params.init()
+        return sender.uploadFileSync(params)
+    }
+
+    //endregion
+
+    //region sendPhoto
+
+    fun sendPhoto(chatId: ChatId,
+                  filePointer: FilePointer,
+                  init: SendPhotoParams.() -> Unit = {},
+                  successCallback: (Message) -> Unit = {}) {
+        val params = SendPhotoParams(chatId, filePointer)
+        params.init()
+        sender.sendMessageAsync(params, successCallback)
+    }
+
+    fun sendPhoto(chatId: ChatId,
+                  file: java.io.File,
+                  init: SendPhotoParams.() -> Unit = {},
+                  successCallback: (Message) -> Unit = {}) {
+        val params = SendPhotoParams(chatId, file = file)
+        params.init()
+        sender.uploadFileAsync(params, successCallback)
+    }
+
+    fun sendPhotoSync(chatId: ChatId,
+                      filePointer: FilePointer? = null,
+                      init: SendPhotoParams.() -> Unit = {}): Message {
+        val params = SendPhotoParams(chatId, filePointer)
+        params.init()
+        return sender.sendMessageSync(params)
+    }
+
+    fun sendPhotoSync(chatId: ChatId,
+                      file: java.io.File,
+                      init: SendPhotoParams.() -> Unit = {}): Message {
+        val params = SendPhotoParams(chatId, file = file)
+        params.init()
+        return sender.uploadFileSync(params)
+    }
+
+    //endregion
+
+    //region sendAudio
+
+    fun sendAudio(chatId: ChatId,
+                  filePointer: FilePointer,
+                  init: SendAudioParams.() -> Unit = {},
+                  successCallback: (Message) -> Unit = {}) {
+        val params = SendAudioParams(chatId, filePointer)
+        params.init()
+        sender.sendMessageAsync(params, successCallback)
+    }
+
+    fun sendAudio(chatId: ChatId,
+                  file: java.io.File,
+                  init: SendAudioParams.() -> Unit = {},
+                  successCallback: (Message) -> Unit = {}) {
+        val params = SendAudioParams(chatId, file = file)
+        params.init()
+        sender.uploadFileAsync(params, successCallback)
+    }
+
+    fun sendAudioSync(chatId: ChatId,
+                      filePointer: FilePointer? = null,
+                      init: SendAudioParams.() -> Unit = {}): Message {
+        val params = SendAudioParams(chatId, filePointer)
+        params.init()
+        return sender.sendMessageSync(params)
+    }
+
+    fun sendAudioSync(chatId: ChatId,
+                      file: java.io.File,
+                      init: SendAudioParams.() -> Unit = {}): Message {
+        val params = SendAudioParams(chatId, file = file)
+        params.init()
+        return sender.uploadFileSync(params)
+    }
+
+    //endregion
 
     fun onStartReply(text: Text, init: SendParams.() -> Unit) {
         onStart {
@@ -124,7 +263,13 @@ open class CommonBotContext(val botName: String) {
     fun Message?.reply(text: Text, init: SendParams.() -> Unit, successCallback: (Message) -> Unit = {}) {
         val sendParams = SendParams(this!!.chat.id, text)
         sendParams.init()
-        sender.send(sendParams, successCallback)
+        sender.sendMessageAsync(sendParams, successCallback)
+    }
+
+    fun Message?.replySync(text: Text, init: SendParams.() -> Unit) : Message {
+        val sendParams = SendParams(this!!.chat.id, text)
+        sendParams.init()
+        return sender.sendMessageSync(sendParams)
     }
 
     fun SendParams.replyKeyboard(init: ReplyKeyboardMarkup.() -> Unit) {
@@ -156,13 +301,13 @@ open class CommonBotContext(val botName: String) {
                                     callbackQueryProcessor: ((CallbackQuery, Update) -> Unit)? = null)
             = abstractButton(text) {
         this.callbackData = callbackData
-        if(callbackQueryProcessor != null) {
+        if (callbackQueryProcessor != null) {
             callbackDataContext.register(callbackData, callbackQueryProcessor)
         }
     }
 
     fun InlineKeyboardMarkup.urlButton(text: Text,
-                                    url: String)
+                                       url: String)
             = abstractButton(text) {
         this.url = url
     }
@@ -176,7 +321,7 @@ open class CommonBotContext(val botName: String) {
         this.switchInlineQueryCurrentChat = switchInlineQueryCurrentChat
     }
 
-    fun InlineKeyboardMarkup.callbackGameButton(text: Text, callbackGame: Any) //todo CallbackGame
+    fun InlineKeyboardMarkup.callbackGameButton(text: Text, callbackGame: CallbackGame)
             = abstractButton(text) {
         this.callbackGame = callbackGame
     }
@@ -212,18 +357,18 @@ open class CommonBotContext(val botName: String) {
             logger.warn("Trying answer but message is undefined")
         } else {
             val sendParams = SendParams(this.chat.id, text)
-            sender.send(sendParams)
+            sender.sendMessageAsync(sendParams)
         }
     }
 
     infix fun CallbackQuery.answer(init: AnswerCallbackQueryParams.() -> Unit) {
         val callbackQueryAnswer = makeAnswer().apply(init)
-        sender.send(callbackQueryAnswer)
+        sender.sendMessageAsync(callbackQueryAnswer)
     }
 
     fun CallbackQuery.emptyAnswer() {
         val callbackQueryAnswer = makeAnswer()
-        sender.send(callbackQueryAnswer)
+        sender.sendMessageAsync(callbackQueryAnswer)
     }
 
     fun CallbackQuery.makeAnswer(): AnswerCallbackQueryParams {
@@ -236,7 +381,7 @@ open class CommonBotContext(val botName: String) {
         } else {
             val sendParams = SendParams(this.chat.id, text)
             sendParams.parseMode = ParseMode.MARKDOWN
-            sender.send(sendParams)
+            sender.sendMessageAsync(sendParams)
         }
     }
 
@@ -246,16 +391,24 @@ open class CommonBotContext(val botName: String) {
         } else {
             val sendParams = SendParams(this.chat.id, text)
             sendParams.parseMode = ParseMode.HTML
-            sender.send(sendParams)
+            sender.sendMessageAsync(sendParams)
         }
     }
 
     fun CommonBotContext.deleteMessage(chatId: ChatId, messageId: MessageId) {
-        sender.send(DeleteMessageParams(chatId, messageId))
+        sender.sendMessageAsync(DeleteMessageParams(chatId, messageId))
+    }
+
+    fun CommonBotContext.deleteMessageSync(chatId: ChatId, messageId: MessageId) {
+        sender.sendMessageSync(DeleteMessageParams(chatId, messageId))
     }
 
     fun Message.deleteMessage() {
         deleteMessage(this.chat.id, this.id)
+    }
+
+    fun Message.deleteMessageSync() {
+        deleteMessageSync(this.chat.id, this.id)
     }
 
     fun Message.editMessageAtChat(text: Text, init: EditMessageTextParams.() -> Unit) {
@@ -267,18 +420,30 @@ open class CommonBotContext(val botName: String) {
         editMessageTextParams.chatId = this.chat.id
         editMessageTextParams.messageId = this.id
         editMessageTextParams.init()
-        sender.send(editMessageTextParams, successCallback)
+        sender.sendMessageAsync(editMessageTextParams, successCallback)
     }
 
-    fun Message.editMessageAsInline(text: Text, inlineMessageId: MessageId, init: EditMessageTextParams.() -> Unit) {
-        editMessageAsInline(text, inlineMessageId, init, {})
+    fun Message.editMessageCaptionAtChat(init: EditMessageCaptionParams.() -> Unit) {
+        val params = EditMessageCaptionParams(chatId = chat.id, messageId = id)
+        params.init()
+        sender.sendMessageAsync(params)
     }
 
-    fun Message.editMessageAsInline(text: Text, inlineMessageId: MessageId, init: EditMessageTextParams.() -> Unit, successCallback: (Message) -> Unit) {
+    fun Message.editMessageCaptionAsInline(init: EditMessageCaptionParams.() -> Unit) {
+        val params = EditMessageCaptionParams(inlineMessageId = id)
+        params.init()
+        sender.sendMessageAsync(params)
+    }
+
+    fun Message.editMessageAsInline(text: Text, init: EditMessageTextParams.() -> Unit) {
+        editMessageAsInline(text, init, {})
+    }
+
+    fun Message.editMessageAsInline(text: Text, init: EditMessageTextParams.() -> Unit, successCallback: (Message) -> Unit) {
         val editMessageTextParams = EditMessageTextParams(text)
-        editMessageTextParams.inlineMessageId = inlineMessageId
+        editMessageTextParams.inlineMessageId = this.id
         editMessageTextParams.init()
-        sender.send(editMessageTextParams, successCallback)
+        sender.sendMessageAsync(editMessageTextParams, successCallback)
     }
 
     fun Message.forwardTo(chatId: ChatId, disableNotification: Boolean = false, successCallback: (Message) -> Unit = {}) {
@@ -286,12 +451,13 @@ open class CommonBotContext(val botName: String) {
     }
 
     fun forwardMessage(chatId: ChatId, fromChatId: ChatId, messageId: MessageId, disableNotification: Boolean = false, successCallback: (Message) -> Unit = {}) {
-        sender.send(ForwardMessageParams(chatId, fromChatId, messageId, disableNotification), successCallback)
+        sender.sendMessageAsync(ForwardMessageParams(chatId, fromChatId, messageId, disableNotification), successCallback)
     }
 
     fun editMessageReplyMarkup(init: EditMessageReplyMarkupParams.() -> Unit, successCallback: (Message) -> Unit = {}) {
         val params = EditMessageReplyMarkupParams()
-        sender.send(params, successCallback)
+        params.init()
+        sender.sendMessageAsync(params, successCallback)
     }
 
     fun Message.editMessageReplyMarkup(init: EditMessageReplyMarkupParams.() -> Unit) {
@@ -303,14 +469,20 @@ open class CommonBotContext(val botName: String) {
         params.chatId = this.chat.id
         params.messageId = this.id
         params.init()
-        sender.send(params, successCallback)
+        sender.sendMessageAsync(params, successCallback)
     }
+
+    fun ChatId.getChat(callback: (Chat) -> Unit) {
+        receiver.getChat(GetChatParams(this), callback)
+    }
+
+    fun ChatId.getChat(): Chat = receiver.getChat(GetChatParams(this))
 
     fun HasEditableReplyMarkup<in InlineKeyboardMarkup>.inlineKeyboard(init: InlineKeyboardMarkup.() -> Unit) {
         replyMarkup = InlineKeyboardMarkup(this).apply(init)
     }
 
-    fun <T: ReplyMarkup> HasEditableReplyMarkup<T>.emptyReplyMarkup() {
+    fun <T : ReplyMarkup> HasEditableReplyMarkup<T>.emptyReplyMarkup() {
         replyMarkup = null
     }
 
